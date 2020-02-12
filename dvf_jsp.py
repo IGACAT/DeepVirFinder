@@ -5,8 +5,8 @@
 # date              :20180807
 # version           :1.0
 # usage             :python dvf.py -i <path_to_input_fasta> -o <path_to_output_directory>
-# required packages :numpy, theano, keras
-# conda create -n dvf python=3.6 numpy theano keras scikit-learn Biopython
+# required packages :numpy, tensorflow, keras
+# conda create -n dvf python=3.6 numpy tensorflow-gpu keras-gpu scikit-learn Biopython
 #==============================================================================
 
 import datetime
@@ -16,6 +16,7 @@ import optparse
 import os
 import sys
 import warnings
+from collections import namedtuple
 
 #### Step 0: import keras libraries ####
 import h5py
@@ -23,8 +24,9 @@ import h5py
 import keras
 import numpy as np
 from keras.models import load_model
+from tqdm import tqdm
 
-from SeqIterator import SeqReader, SeqWriter
+from SeqIterator.SeqIterator import SeqReader, SeqWriter
 
 tick = datetime.datetime.now()
 print("Started on : {}.".format(tick), file=sys.stdout)
@@ -53,20 +55,25 @@ parser.add_option("-o",
                   dest="output_dir",
                   default='./',
                   help="output directory")
-parser.add_option("-l",
-                  "--len",
-                  action="store",
-                  type="int",
-                  dest="cutoff_len",
-                  default=1,
-                  help="predict only for sequence >= L bp (default 1)")
-parser.add_option("-c",
-                  "--core",
-                  action="store",
-                  type="int",
-                  dest="core_num",
-                  default=1,
-                  help="number of parallel cores (default 1)")
+parser.add_option("-b",
+                  "--batch_size",
+                  type=int,
+                  help="The number of sequences to predict at once.",
+                  default=256)
+# parser.add_option("-l",
+#                   "--len",
+#                   action="store",
+#                   type="int",
+#                   dest="cutoff_len",
+#                   default=1,
+#                   help="predict only for sequence >= L bp (default 1)")
+# parser.add_option("-c",
+#                   "--core",
+#                   action="store",
+#                   type="int",
+#                   dest="core_num",
+#                   default=1,
+#                   help="number of parallel cores (default 1)")
 
 (options, args) = parser.parse_args()
 if (options.input_fa is None):
@@ -76,7 +83,7 @@ if (options.input_fa is None):
                   ": ERROR: missing required command-line argument")
     parser.print_help()
     sys.exit(0)
-
+batch_size = options.batch_size
 input_fa = options.input_fa
 if options.output_dir != './':
     output_dir = options.output_dir
@@ -84,8 +91,8 @@ else:
     output_dir = os.path.dirname(os.path.abspath(input_fa))
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
-cutoff_len = options.cutoff_len
-core_num = options.core_num
+# cutoff_len = options.cutoff_len
+# core_num = options.core_num
 
 #sys.setrecursionlimit(10000000)
 #os.environ['THEANO_FLAGS'] = "floatX=float32,openmp=True"
@@ -160,6 +167,7 @@ def pred(ID):
 print("1. Loading Models.")
 #modDir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
 modDir = options.modDir
+
 print("   model directory {}".format(modDir))
 
 modDict = {}
@@ -192,91 +200,119 @@ for contigLengthk in ['0.1', '0.3', '0.5', '1']:
         tmp = [line.split()[0] for line in f]
         Y_true = [float(x) for x in tmp]
     nullDict[contigLengthk] = Y_pred[:Y_true.index(1)]
+    print("Null dict length: ",
+          len(nullDict[contigLengthk]),
+          contigLengthk,
+          file=sys.stderr)
+    sys.stderr.flush()
 
 #### Step2 : encode sequences in input fasta, and predict scores ####
 
 # clean the output file
-outfile = os.path.join(
-    output_dir,
-    os.path.basename(input_fa) + '_gt' + str(cutoff_len) + 'bp_dvfpred.txt')
+outfile = os.path.join(output_dir,
+                       os.path.basename(input_fa) + '_bp_dvfpred.txt')
 predF = open(outfile, 'w')
-writef = predF.write('\t'.join(['name', 'len', 'score', 'pvalue']) + '\n')
+writef = predF.write('\t'.join(['name', 'len', 'score']) + '\n')
 predF.close()
 predF = open(outfile, 'a')
-#flushf = predF.flush()
+Batch_R = namedtuple('Batch_R', 'fw rv id')
 
-print("2. Encoding and Predicting Sequences.")
-with open(input_fa, 'r') as faLines:
-    code = []
-    codeR = []
-    seqname = []
-    head = ''
-    lineNum = 0
-    seq = ''
-    flag = 0
-    for line in faLines:
-        #print(line)
-        lineNum += 1
-        if flag == 0 and line[0] == '>':
-            print("   processing line " + str(lineNum))
-            head = line.strip()[1:]
-            continue
-        elif line[0] != '>':
-            seq = seq + line.strip()
-            flag += 1
-        elif flag > 0 and line[0] == '>':
-            countN = seq.count("N")
-            if countN / len(seq) <= 0.3 and len(seq) >= cutoff_len:
-                codefw = encodeSeq(seq)
-                seqR = "".join(
-                    complement.get(base, base) for base in reversed(seq))
-                codebw = encodeSeq(seqR)
-                code.append(codefw)
-                codeR.append(codebw)
-                seqname.append(head)
-                if len(seqname) % 100 == 0:
-                    print("   processing line " + str(lineNum))
-                    # pool = multiprocessing.Pool(core_num)
-                    # head, score, pvalue = zip(*pool.map(pred, range(0, len(code))))
-                    output_ret = list(zip(map(pred, range(0, len(code)))))
-                    try:
-                        pass
-                    #  head, score, pvalue = output_ret
-                    except ValueError:
-                        print(output_ret, file=sys.stderr)
-                        raise ValueError
-                    # pool.close()
 
-                    code = []
-                    codeR = []
-                    seqname = []
-            else:
-                if countN / len(seq) > 0.3:
-                    print("   {} has >30% Ns, skipping it".format(head))
-                # else :
-                #    print("   {} < {}bp, skipping it".format(head, cutoff_len))
+def jsp_pred(batch, model=modDict['0.1']):
+    batch_fw = np.array([item.fw for item in batch])
+    batch_rv = np.array([item.rv for item in batch])
+    score = model.predict([batch_fw, batch_rv], batch_size=len(batch))
+    for i in range(len(batch)):
+        print("{}\t{}\t{}".format(batch[i].id, len(batch[i].fw),
+                                  float(score[i])),
+              file=predF)
+    predF.flush()
 
-            flag = 0
-            seq = ''
-            head = line.strip()[1:]
 
-    if flag > 0:
-        countN = seq.count("N")
-        if countN / len(seq) <= 0.3 and len(seq) >= cutoff_len:
-            codefw = encodeSeq(seq)
-            seqR = "".join(
-                complement.get(base, base) for base in reversed(seq))
-            codebw = encodeSeq(seqR)
-            code.append(codefw)
-            codeR.append(codebw)
-            seqname.append(head)
+reader = SeqReader(input_fa)
+batch = []
+for record in tqdm(reader):
+    code_fw = encodeSeq(record[1])
+    code_rv = encodeSeq("".join(
+        complement.get(base, base) for base in reversed(record[1])))
+    batch.append(Batch_R(fw=code_fw, rv=code_rv, id=record[0]))
+    if len(batch) == batch_size:
+        jsp_pred(batch)
+        batch = []
+jsp_pred(batch)
 
-        print("   processing line " + str(lineNum))
-        pool = multiprocessing.Pool(core_num)
-        head, score, pvalue = zip(*pool.map(pred, range(0, len(code))))
-        pool.close()
+# print("2. Encoding and Predicting Sequences.")
+# with open(input_fa, 'r') as faLines:
+#     code = []
+#     codeR = []
+#     seqname = []
+#     head = ''
+#     lineNum = 0
+#     seq = ''
+#     flag = 0
+#     for line in faLines:
+#         #print(line)
+#         lineNum += 1
+#         if flag == 0 and line[0] == '>':
+#             print("   processing line " + str(lineNum))
+#             head = line.strip()[1:]
+#             continue
+#         elif line[0] != '>':
+#             seq = seq + line.strip()
+#             flag += 1
+#         elif flag > 0 and line[0] == '>':
+#             countN = seq.count("N")
+#             if countN / len(seq) <= 0.3 and len(seq) >= cutoff_len:
+#                 codefw = encodeSeq(seq)
+#                 seqR = "".join(
+#                     complement.get(base, base) for base in reversed(seq))
+#                 codebw = encodeSeq(seqR)
+#                 code.append(codefw)
+#                 codeR.append(codebw)
+#                 seqname.append(head)
+#                 if len(seqname) % 100 == 0:
+#                     print("   processing line " + str(lineNum))
+#                     # pool = multiprocessing.Pool(core_num)
+#                     # head, score, pvalue = zip(*pool.map(pred, range(0, len(code))))
+#                     output_ret = list(zip(map(pred, range(0, len(code)))))
+#                     try:
+#                         pass
+#                     #  head, score, pvalue = output_ret
+#                     except ValueError:
+#                         print(output_ret, file=sys.stderr)
+#                         raise ValueError
+#                     # pool.close()
 
-predF.close()
+#                     code = []
+#                     codeR = []
+#                     seqname = []
+#             else:
+#                 if countN / len(seq) > 0.3:
+#                     print("   {} has >30% Ns, skipping it".format(head))
+#                 # else :
+#                 #    print("   {} < {}bp, skipping it".format(head, cutoff_len))
+
+#             flag = 0
+#             seq = ''
+#             head = line.strip()[1:]
+
+#     if flag > 0:
+#         countN = seq.count("N")
+#         if countN / len(seq) <= 0.3 and len(seq) >= cutoff_len:
+#             codefw = encodeSeq(seq)
+#             seqR = "".join(
+#                 complement.get(base, base) for base in reversed(seq))
+#             codebw = encodeSeq(seqR)
+#             code.append(codefw)
+#             codeR.append(codebw)
+#             seqname.append(head)
+
+#         print("   processing line " + str(lineNum))
+#         pool = multiprocessing.Pool(core_num)
+#         head, score, pvalue = zip(*pool.map(pred, range(0, len(code))))
+#         pool.close()
+
+# predF.close()
 
 tock = datetime.datetime.now()
 print("3. Done. Thank you for using DeepVirFinder.")
