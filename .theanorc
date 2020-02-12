@@ -1,0 +1,4 @@
+[global]
+device = cuda
+floatX = float32
+force_device=True

@@ -13,8 +13,8 @@ import os, sys
 from Bio.Seq import Seq
 import numpy as np
 import optparse
-    
-def encodeSeq(seq) : 
+
+def encodeSeq(seq) :
     seq_code = list()
     for pos in range(len(seq)) :
         letter = seq[pos]
@@ -29,8 +29,8 @@ def encodeSeq(seq) :
         else :
             code = [1/4, 1/4, 1/4, 1/4]
         seq_code.append(code)
-    return seq_code 
-    
+    return seq_code
+
 
 prog_base = os.path.split(sys.argv[0])[1]
 
@@ -79,6 +79,8 @@ with open(fileName, 'r') as faLines :
             continue
         elif line[0] != '>' :
             seqCat = seqCat + line.strip()
+            if len(seqCat) < 150:
+                seqCat += "X"*(150-len(seqCat))
             flag += 1
             lineNum += 1
         elif flag > 0 and line[0] == '>' :
@@ -91,7 +93,7 @@ with open(fileName, 'r') as faLines :
                 seq = seqCat[pos:posEnd]
 
                 countN = seq.count("N")
-                if countN/len(seq) <= 0.3 : 
+                if countN/len(seq) <= 0.3 :
                     seqname.append(">"+contigName)
                     seqname.append(seq)
                     seq_code = encodeSeq(seq)
@@ -110,7 +112,7 @@ with open(fileName, 'r') as faLines :
                     fileCount += 1
                     codeFileNamefw = contigType+"#"+NCBIName+"#"+str(contigLengthk)+"k_num"+str(fileCount)+"_seq"+str(len(code))+"_codefw.npy"
                     codeFileNamebw = contigType+"#"+NCBIName+"#"+str(contigLengthk)+"k_num"+str(fileCount)+"_seq"+str(len(codeR))+"_codebw.npy"
-                    nameFileName = contigType+"#"+NCBIName+"#"+str(contigLengthk)+"k_num"+str(fileCount)+"_seq"+str(int(len(seqname)/2))+".fasta"     
+                    nameFileName = contigType+"#"+NCBIName+"#"+str(contigLengthk)+"k_num"+str(fileCount)+"_seq"+str(int(len(seqname)/2))+".fasta"
                     print("encoded sequences are saved in {}".format(codeFileNamefw))
                     np.save( os.path.join(outDir, codeFileNamefw), np.array(code) )
                     np.save( os.path.join(outDir, codeFileNamebw), np.array(codeR) )
@@ -125,7 +127,7 @@ with open(fileName, 'r') as faLines :
             flag = 0
             seqCat = ''
             head = line.strip()
-          
+
     if flag > 0 :
         lineNum += 1
 #        print("seqCatLen="+str(len(seqCat)))
@@ -136,7 +138,7 @@ with open(fileName, 'r') as faLines :
             seq = seqCat[pos:posEnd]
 
             countN = seq.count("N")
-            if countN/len(seq) <= 0.3 : 
+            if countN/len(seq) <= 0.3 :
                 seqname.append(">"+contigName)
                 seqname.append(seq)
                 seq_code = encodeSeq(seq)
@@ -178,4 +180,4 @@ if len(code) > 0 :
     seqnameF.write('\n'.join(seqname) + '\n')
     seqnameF.close()
 
-           
+

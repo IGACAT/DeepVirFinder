@@ -9,9 +9,11 @@
 # conda create -n dvf python=3.6 numpy theano keras scikit-learn Biopython
 #==============================================================================
 
+import os
 #import multiprocessing
-#os.environ['THEANO_FLAGS'] = "floatX=float32,openmp=True" 
-#os.environ['THEANO_FLAGS'] = "mode=FAST_RUN,device=gpu0,floatX=float32" 
+#os.environ['THEANO_FLAGS'] = "floatX=float32,openmp=True"
+# os.environ['KERAS_BACKEND'] = 'theano'
+# os.environ['THEANO_FLAGS'] = "mode=FAST_RUN,device=gpu0,floatX=float32"
 #os.environ['OMP_NUM_THREADS'] = str(multiprocessing.cpu_count())
 import numpy as np
 import os
@@ -26,7 +28,7 @@ from keras.callbacks import ModelCheckpoint, EarlyStopping
 from keras.optimizers import Adam
 import h5py
 import sklearn
-from sklearn.metrics import roc_auc_score 
+from sklearn.metrics import roc_auc_score
 
 channel_num = 4
 
@@ -185,7 +187,7 @@ else :
       Dropout(dropout_dense),
       Dense(1, activation='sigmoid')
   ]
-  forward_output = get_output(forward_input, hidden_layers)     
+  forward_output = get_output(forward_input, hidden_layers)
   reverse_output = get_output(reverse_input, hidden_layers)
   output = Average()([forward_output, reverse_output])
   model = Model(inputs=[forward_input, reverse_input], outputs=output)
@@ -198,8 +200,8 @@ model.fit(x = [X_trfw_shuf, X_trbw_shuf], y = Y_tr_shuf, \
             validation_data=([X_valfw, X_valbw], Y_val), \
             callbacks=[checkpointer, earlystopper])
 
-            
-            
+
+
 ## Final evaluation AUC ###
 
 ## train data

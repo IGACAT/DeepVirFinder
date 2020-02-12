@@ -5,20 +5,25 @@
 # date              :20180807
 # version           :1.0
 # usage             :python dvf.py -i <path_to_input_fasta> -o <path_to_output_directory>
-# required packages :numpy, theano, keras 
+# required packages :numpy, theano, keras
 # conda create -n dvf python=3.6 numpy theano keras scikit-learn Biopython
 #==============================================================================
 
 
 #### Step 0: pass arguments into the program ####
 import os, sys, optparse, warnings
+import datetime
+
+tick = datetime.datetime.now()
+print("Started on : {}.".format(tick), file=sys.stdout)
+sys.stdout.flush()
 
 prog_base = os.path.split(sys.argv[0])[1]
 parser = optparse.OptionParser()
-parser.add_option("-i", "--in", action = "store", type = "string", dest = "input_fa", 
+parser.add_option("-i", "--in", action = "store", type = "string", dest = "input_fa",
                   help = "input fasta file")
 parser.add_option("-m", "--mod", action = "store", type = "string", dest = "modDir",
-									default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "models"), 
+									default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "models"),
                   help = "model directory (default ./models)")
 parser.add_option("-o", "--out", action = "store", type = "string", dest = "output_dir",
 									default='./', help = "output directory")
@@ -49,17 +54,17 @@ core_num = options.core_num
 import h5py, multiprocessing
 import numpy as np
 
-os.environ['KERAS_BACKEND'] = 'theano'
+# os.environ['KERAS_BACKEND'] = 'theano'
 import keras
 from keras.models import load_model
 #sys.setrecursionlimit(10000000)
-#os.environ['THEANO_FLAGS'] = "floatX=float32,openmp=True" 
-#os.environ['THEANO_FLAGS'] = "mode=FAST_RUN,device=gpu0,floatX=float32" 
+#os.environ['THEANO_FLAGS'] = "floatX=float32,openmp=True"
+#os.environ['THEANO_FLAGS'] = "mode=FAST_RUN,device=gpu0,floatX=float32"
 #os.environ['OMP_NUM_THREADS'] = str(multiprocessing.cpu_count())
 
 
 #### Step 0: function for encoding sequences into matrices of size 4 by n ####
-def encodeSeq(seq) : 
+def encodeSeq(seq) :
     seq_code = list()
     for pos in range(len(seq)) :
         letter = seq[pos]
@@ -74,26 +79,29 @@ def encodeSeq(seq) :
         else :
             code = [1/4, 1/4, 1/4, 1/4]
         seq_code.append(code)
-    return seq_code 
-    
-    
+    return seq_code
+
+
 complement = {'A': 'T', 'C': 'G', 'G': 'C', 'T': 'A', 'N': 'N'}
 #seq = "TCGGGCCC"
 #reverse_complement = "".join(complement.get(base, base) for base in reversed(seq))
-  
-    
+
+
 #### Step 0: function for predicting viral score using the trained model ####
 def pred(ID) :
     codefw = code[ID]
     codebw = codeR[ID]
     head = seqname[ID]
-    
+
     #print('predicting '+head)
     seqL = len(codefw)
-    
-    if seqL < 300 :
-      model = modDict['0.15']
-      null = nullDict['0.15']
+
+    if seqL <= 300:
+        model = modDict['0.1']
+        null = nullDict['0.1']
+#    if seqL < 300 :
+#      model = modDict['0.15']
+#      null = nullDict['0.15']
     elif seqL < 500 and seqL >= 300 :
       model = modDict['0.3']
       null = nullDict['0.3']
@@ -103,13 +111,13 @@ def pred(ID) :
     else :
       model = modDict['1']
       null = nullDict['1']
-    
+
     score = model.predict([np.array([codefw]), np.array([codebw])], batch_size=1)
     pvalue = sum([x>score for x in null])/len(null)
-    
+
     writef = predF.write('\t'.join([head, str(seqL), str(float(score)), str(float(pvalue))])+'\n')
     flushf = predF.flush()
-    
+
     return [head, float(score), float(pvalue)]
 
 
@@ -124,9 +132,13 @@ nullDict = {}
 
 warnings.filterwarnings('ignore', 'Error in loading the saved optimizer ')
 
-for contigLengthk in ['0.15', '0.3', '0.5', '1'] :
+# for contigLengthk in ['0.15', '0.3', '0.5', '1'] :
+for contigLengthk in ['0.1', '0.3', '0.5', '1'] :
   modPattern = 'model_siamese_varlen_'+contigLengthk+'k'
-  modName = [ x for x in os.listdir(modDir) if modPattern in x and x.endswith(".h5") ][0]
+  try:
+    modName = [ x for x in os.listdir(modDir) if modPattern in x and x.endswith(".h5") ][0]
+  except IndexError:
+      continue
   #model_1000 = load_model(os.path.join(modDir, modName))
   modDict[contigLengthk] = load_model(os.path.join(modDir, modName))
   Y_pred_file = [ x for x in os.listdir(modDir) if modPattern in x and "Y_pred" in x ][0]
@@ -136,8 +148,8 @@ for contigLengthk in ['0.15', '0.3', '0.5', '1'] :
   Y_true_file = [ x for x in os.listdir(modDir) if modPattern in x and "Y_true" in x ][0]
   with open(os.path.join(modDir, Y_true_file)) as f:
       tmp = [ line.split()[0] for line in f]
-      Y_true = [ float(x) for x in tmp ]   
-  nullDict[contigLengthk] =  Y_pred[:Y_true.index(1)]  
+      Y_true = [ float(x) for x in tmp ]
+  nullDict[contigLengthk] =  Y_pred[:Y_true.index(1)]
 
 
 #### Step2 : encode sequences in input fasta, and predict scores ####
@@ -171,7 +183,7 @@ with open(input_fa, 'r') as faLines :
             flag += 1
         elif flag > 0 and line[0] == '>' :
             countN = seq.count("N")
-            if countN/len(seq) <= 0.3 and len(seq) >= cutoff_len : 
+            if countN/len(seq) <= 0.3 and len(seq) >= cutoff_len :
                 codefw = encodeSeq(seq)
                 seqR = "".join(complement.get(base, base) for base in reversed(seq))
                 codebw = encodeSeq(seqR)
@@ -180,10 +192,17 @@ with open(input_fa, 'r') as faLines :
                 seqname.append(head)
                 if len(seqname) % 100 == 0 :
                     print("   processing line "+str(lineNum))
-                    pool = multiprocessing.Pool(core_num)
-                    head, score, pvalue = zip(*pool.map(pred, range(0, len(code))))
-                    pool.close()
-                    
+                    # pool = multiprocessing.Pool(core_num)
+                    # head, score, pvalue = zip(*pool.map(pred, range(0, len(code))))
+                    output_ret = list(zip(map(pred, range(0, len(code)))))
+                    try:
+                        pass
+                       #  head, score, pvalue = output_ret
+                    except ValueError:
+                        print(output_ret, file=sys.stderr)
+                        raise ValueError
+                    # pool.close()
+
                     code = []
                     codeR = []
                     seqname = []
@@ -192,14 +211,14 @@ with open(input_fa, 'r') as faLines :
                     print("   {} has >30% Ns, skipping it".format(head))
                 # else :
                 #    print("   {} < {}bp, skipping it".format(head, cutoff_len))
-            
+
             flag = 0
             seq = ''
             head = line.strip()[1:]
 
     if flag > 0 :
         countN = seq.count("N")
-        if countN/len(seq) <= 0.3 and len(seq) >= cutoff_len : 
+        if countN/len(seq) <= 0.3 and len(seq) >= cutoff_len :
             codefw = encodeSeq(seq)
             seqR = "".join(complement.get(base, base) for base in reversed(seq))
             codebw = encodeSeq(seqR)
@@ -214,10 +233,11 @@ with open(input_fa, 'r') as faLines :
 
 predF.close()
 
+tock = datetime.datetime.now()
 print("3. Done. Thank you for using DeepVirFinder.")
 print("   output in {}".format(outfile))
-
-
+print("The process took time: {}".format(tock - tick), file=sys.stderr)
+sys.stderr.flush()
 
 
 
