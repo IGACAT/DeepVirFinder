@@ -63,6 +63,24 @@ The option [-m] is for specifying the directory to the models. The default model
     python dvf.py [-i INPUT_FA] [-o OUTPUT_DIR] [-l CUTOFF_LEN] [-c CORE_NUM]
 
 
+## Instructions for Use (compare to Plinko)
+
+DeepVirFinder requires two files for training.  These files can be created from Plinko/Radogest fasta/taxid file combinations with the program /Radogest/utils/convert\_format.py. These files need to be one hot encoded with encode.py.  training.py is used to train the model.  Plinko's conda environment can be used with this.  It will have tensorflow, so it will use the tensorflow back end.
+
+Example of convert\_format.py
+
+`convert_format.py --type deepvirfinder --remainder ./hosts.fa --taxid 10239 fasta_file taxid_file 1> virus.fa`
+
+dvf.py is used for prediction.  
+
+If a different kmer length is desired, then the following lines of code need to be modified in dvf.py:
+Change the if statement and the dictionary lookups in the 'pred' function on lines 137, 138, 139.  
+Include your sequence length in the for loop on line 179.
+DeepVirFinder divides by 1000 for its kmer length.  Thus, a 100mer is represented as 0.1.
+
+DeepVirFinder was originally designed to be used with several models that handle different ranges of kmers (assembled contigs).  This is why it is necessary to change the kmer length in the code.
+
+
 #### Options
       -h, --help            show this help message and exit
       -i INPUT_FA, --in=INPUT_FA
