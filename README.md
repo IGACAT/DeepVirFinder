@@ -78,7 +78,7 @@ Change the if statement and the dictionary lookups in the 'pred' function on lin
 Include your sequence length in the for loop on line 179.
 DeepVirFinder divides by 1000 for its kmer length.  Thus, a 100mer is represented as 0.1.
 
-DeepVirFinder was originally designed to be used with several models that handle different ranges of kmers (assembled contigs).  This is why it is necessary to change the kmer length in the code.
+DeepVirFinder was originally designed to be used with several models that handle different ranges of kmers (assembled contigs).  This is why it is necessary to change the kmer length in the code.  The p-value calculation was causing DeepVirFinder to be slow since it was using a quadratic process.  Using multiple cores no longer works since tensorflow doesn't like being run under a process pool.  DeepVirFinder originally used theano, but using tensorflow is easier to use with the GPU since we have Plinko environments working with the GPU.  DeepVirFinder has a batch size of 256 for prediction instead of the original batch size of 1. 
 
 
 #### Options
